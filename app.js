@@ -110,7 +110,9 @@ const mapInternationalItem = (item) => {
  * @return {object} The newly-created Worksheet.
  */
 const createSheet = (workbook, records, shippingSpeed, locale) => {
-  const sheet = workbook.addWorksheet(formatSheetTitle(shippingSpeed, locale));
+  const sheet = workbook.addWorksheet(formatSheetTitle(shippingSpeed, locale), { properties: {
+    defaultColWidth: 15
+  }});
 
   const dataMap = new Map();
   const data = [];
