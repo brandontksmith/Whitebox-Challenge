@@ -10,6 +10,9 @@
   "license": "ISC",
   "dependencies": {
     "exceljs": "^4.2.0",
-    "mysql": "^2.18.1"
+    "mysql2": "^2.2.5"
+  },
+  "devDependencies": {
+    "eslint": "^7.16.0"
   }
 }

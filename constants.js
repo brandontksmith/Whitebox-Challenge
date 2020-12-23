@@ -24,7 +24,7 @@ const DB_CONFIG = {
   user: process.env.DATABASE_USER || 'root',
   password: process.env.DATABASE_PASS || 'secret',
   database: process.env.DATABASE_NAME || 'whitebox'
-}
+};
 
 const FILE_NAME = 'uploads/Whitebox-Export.xlsx';
 

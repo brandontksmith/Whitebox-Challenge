@@ -1,4 +1,4 @@
-const mysql = require('mysql');
+const mysql = require('mysql2');
 const ExcelJS = require('exceljs');
 
 const {
@@ -7,7 +7,6 @@ const {
   DOMESTIC_HEADINGS,
   INTERNATIONAL_HEADINGS,
   DB_CONFIG,
-  EXPORT_PATH,
   FILE_NAME
 } = require('./constants');
 
@@ -25,11 +24,11 @@ connection.connect();
  */
 const fetchRatesByClientAndType = async (clientId, shippingSpeed, locale) => {
   return await new Promise((resolve, reject) => {
-    connection.query('SELECT * FROM rates WHERE client_id = ? AND shipping_speed = ? AND locale = ? ORDER BY start_weight, end_weight, zone', [ clientId, shippingSpeed, locale ], (error, results, fields) => {
+    connection.query('SELECT * FROM rates WHERE client_id = ? AND shipping_speed = ? AND locale = ? ORDER BY start_weight, end_weight, zone', [ clientId, shippingSpeed, locale ], (error, results) => {
       return error ? reject(error) : resolve(results);
     });
   });
-}
+};
 
 /**
  * Formats the sheet title for the given Shipping Speed and Locale.
@@ -51,7 +50,7 @@ const formatSheetTitle = (shippingSpeed, locale) => {
   }
 
   return `${ altLocale } ${ altShippingSpeed } Rates`;
-}
+};
 
 /**
  * Maps the Rate Item.
@@ -70,7 +69,7 @@ const mapItem = (item, locale) => {
   }
 
   return [];
-}
+};
 
 /**
  * Maps the Domestic Rate Item.
@@ -83,7 +82,7 @@ const mapDomesticItem = (item) => {
     item.startWeight, item.endWeight, item.zone1, item.zone2, item.zone3, item.zone4,
     item.zone5, item.zone6, item.zone7, item.zone8
   ];
-}
+};
 
 /**
  * Maps the International Rate Item.
@@ -97,7 +96,7 @@ const mapInternationalItem = (item) => {
     item.zoneE, item.zoneF, item.zoneG, item.zoneH, item.zoneI, item.zoneJ, item.zoneK,
     item.zoneL, item.zoneM, item.zoneN, item.zoneO
   ];
-}
+};
 
 /**
  * Creates a new Worksheet on the Workbook with the given Records for the Shipping
@@ -137,18 +136,14 @@ const createSheet = (workbook, records, shippingSpeed, locale) => {
   const headings = locale === 'domestic' ? DOMESTIC_HEADINGS : INTERNATIONAL_HEADINGS;
 
   data.push(headings);
-  dataMap.forEach((item, key) => {
-    if (locale === 'domestic') {
-      data.push(mapDomesticItem(item));
-    } else if (locale === 'international') {
-      data.push(mapInternationalItem(item));
-    }
+  dataMap.forEach((item) => {
+    data.push(mapItem(item, locale));
   });
 
   sheet.addRows(data);
 
   return sheet;
-}
+};
 
 /**
  * Exports Rates to an Excel (.xlsx) File.
@@ -162,17 +157,17 @@ const exportRatesToExcel = async (fileName) => {
     const rateType = RATE_TYPES[index];
     const { shippingSpeed, locale } = rateType;
 
-    console.log(`Exporting Rates for ${ locale } ${ shippingSpeed }`)
+    console.log(`Exporting Rates for ${ locale } ${ shippingSpeed }`);
 
     const records = await fetchRatesByClientAndType(CLIENT_ID, shippingSpeed, locale);
 
-    console.log(`Found ${ records.length } Records for ${ locale } ${ shippingSpeed }`)
-
-    const sheet = createSheet(workbook, records, shippingSpeed, locale);
+    console.log(`Found ${ records.length } Records for ${ locale } ${ shippingSpeed }`);
+    
+    createSheet(workbook, records, shippingSpeed, locale);
   }
 
   await workbook.xlsx.writeFile(fileName);
-}
+};
 
 exportRatesToExcel(FILE_NAME).then(() => {
   console.log(`Done. Uploaded to ${ FILE_NAME }`);
