@@ -1,18 +1,17 @@
-const mysql = require('mysql2');
+const mysql = require('mysql2/promise');
 const ExcelJS = require('exceljs');
 
 const {
   CLIENT_ID,
   RATE_TYPES,
-  DOMESTIC_HEADINGS,
-  INTERNATIONAL_HEADINGS,
+  HEADINGS,
+  MAX_DOMESTIC_ZONE,
+  MAX_INTERNATIONAL_ZONE,
   DB_CONFIG,
   FILE_NAME
 } = require('./constants');
 
-const connection = mysql.createConnection({ ...DB_CONFIG });
-
-connection.connect();
+var connection;
 
 /**
  * Fetches Rates for the given Client ID, Shipping Speed, and Locale.
@@ -23,11 +22,10 @@ connection.connect();
  * @return {array} An Array of Rates.
  */
 const fetchRatesByClientAndType = async (clientId, shippingSpeed, locale) => {
-  return await new Promise((resolve, reject) => {
-    connection.query('SELECT * FROM rates WHERE client_id = ? AND shipping_speed = ? AND locale = ? ORDER BY start_weight, end_weight, zone', [ clientId, shippingSpeed, locale ], (error, results) => {
-      return error ? reject(error) : resolve(results);
-    });
-  });
+  return await connection.query(
+    'SELECT * FROM rates WHERE client_id = ? AND shipping_speed = ? AND locale = ? ' +
+    ' ORDER BY start_weight, end_weight, zone', [ clientId, shippingSpeed, locale ]
+  );
 };
 
 /**
@@ -41,6 +39,7 @@ const formatSheetTitle = (shippingSpeed, locale) => {
   let altLocale = locale.charAt(0).toUpperCase() + locale.slice(1);
   let altShippingSpeed = shippingSpeed.charAt(0).toUpperCase() + shippingSpeed.slice(1);
 
+  // Shipping Speeds that do not conform to the pattern above.
   if (shippingSpeed === 'nextDay') {
     altShippingSpeed = 'Next Day';
   } else if (shippingSpeed === 'intlExpedited') {
@@ -53,19 +52,77 @@ const formatSheetTitle = (shippingSpeed, locale) => {
 };
 
 /**
+ * Returns the Zones.
+ *
+ * @param {string} locale The Locale, Domestic or International.
+ * @return {object} The Zones.
+ */
+const getZones = (locale) => {
+  if (locale === 'domestic') {
+    return getDomesticZones();
+  }
+
+  if (locale === 'international') {
+    return getInternationalZones();
+  }
+
+  return [];
+};
+
+/**
+ * Returns the Domestic Zones.
+ *
+ * @return {object} The Domestic Zones.
+ */
+const getDomesticZones = () => {
+  const zones = {};
+
+  for (let i = 1; i <= MAX_DOMESTIC_ZONE; i++) {
+    const heading = `Zone ${ i }`;
+    const mapping = `zone${ i }`;
+
+    zones[heading] = mapping;
+  }
+
+  return zones;
+};
+
+/**
+ * Returns the International Zones.
+ *
+ * @return {object} The International Zones.
+ */
+const getInternationalZones = () => {
+  const zones = {};
+
+  const min = 'A'.charCodeAt(0);
+  const max = MAX_INTERNATIONAL_ZONE.charCodeAt(0);
+
+  for (let i = min; i <= max; i++) {
+    const letter = String.fromCharCode(i);
+    const heading = `Zone ${ letter }`;
+    const mapping = `zone${ letter }`;
+
+    zones[heading] = mapping;
+  }
+
+  return zones;
+};
+
+/**
  * Maps the Rate Item.
  *
  * @param {object} item The Rate Item.
  * @param {string} locale The Locale, Domestic or International.
  * @return {array} An Array of the fully-populated Rates and Zones.
  */
-const mapItem = (item, locale) => {
+const mapItem = (item, locale, zones) => {
   if (locale === 'domestic') {
-    return mapDomesticItem(item);
+    return mapDomesticItem(item, zones);
   }
 
   if (locale === 'international') {
-    return mapInternationalItem(item);
+    return mapInternationalItem(item, zones);
   }
 
   return [];
@@ -75,27 +132,34 @@ const mapItem = (item, locale) => {
  * Maps the Domestic Rate Item.
  *
  * @param {object} item The Domestic Rate Item.
+ * @param {array} zones The Domestic Zones.
  * @return {array} An Array of the fully-populated Domestic Rates and Zones.
  */
-const mapDomesticItem = (item) => {
-  return [
-    item.startWeight, item.endWeight, item.zone1, item.zone2, item.zone3, item.zone4,
-    item.zone5, item.zone6, item.zone7, item.zone8
-  ];
+const mapDomesticItem = (item, zones) => {
+  const mappedItem = [ item.startWeight, item.endWeight ];
+
+  for (const zone of zones) {
+    mappedItem.push(item[zone]);
+  }
+
+  return mappedItem;
 };
 
 /**
  * Maps the International Rate Item.
  *
  * @param {object} item The International Rate Item.
+ * @param {array} zones The International Zones.
  * @return {array} An Array of the fully-populated International Rates and Zones.
  */
-const mapInternationalItem = (item) => {
-  return [
-    item.startWeight, item.endWeight, item.zoneA, item.zoneB, item.zoneC, item.zoneD,
-    item.zoneE, item.zoneF, item.zoneG, item.zoneH, item.zoneI, item.zoneJ, item.zoneK,
-    item.zoneL, item.zoneM, item.zoneN, item.zoneO
-  ];
+const mapInternationalItem = (item, zones) => {
+  const mappedItem = [ item.startWeight, item.endWeight ];
+
+  for (const zone of zones) {
+    mappedItem.push(item[zone]);
+  }
+
+  return mappedItem;
 };
 
 /**
@@ -109,14 +173,20 @@ const mapInternationalItem = (item) => {
  * @return {object} The newly-created Worksheet.
  */
 const createSheet = (workbook, records, shippingSpeed, locale) => {
-  const sheet = workbook.addWorksheet(formatSheetTitle(shippingSpeed, locale), { properties: {
-    defaultColWidth: 15
-  }});
+  const sheet = workbook.addWorksheet(formatSheetTitle(shippingSpeed, locale), {
+    properties: {
+      defaultColWidth: 15
+    }
+  });
 
   const dataMap = new Map();
   const data = [];
+  const zones = getZones(locale);
 
-  records.forEach(record => {
+  const zoneHeadings = Object.keys(zones);
+  const zoneKeys = Object.values(zones);
+
+  for (const record of records) {
     const mapKey = `${ record.start_weight }:${ record.end_weight }`;
     const zoneKey = `zone${ record.zone.toUpperCase() }`;
 
@@ -131,14 +201,15 @@ const createSheet = (workbook, records, shippingSpeed, locale) => {
 
     obj[zoneKey] = record.rate;
     dataMap.set(mapKey, obj);
-  });
+  }
 
-  const headings = locale === 'domestic' ? DOMESTIC_HEADINGS : INTERNATIONAL_HEADINGS;
+  data.push([ ...HEADINGS, ...zoneHeadings ]);
 
-  data.push(headings);
-  dataMap.forEach((item) => {
-    data.push(mapItem(item, locale));
-  });
+  const iterator = dataMap[Symbol.iterator]();
+
+  for (const [key, value] of iterator) {
+    data.push(mapItem(value, locale, zoneKeys));
+  }
 
   sheet.addRows(data);
 
@@ -146,32 +217,38 @@ const createSheet = (workbook, records, shippingSpeed, locale) => {
 };
 
 /**
- * Exports Rates to an Excel (.xlsx) File.
+ * Exports and writes the Rates to an Excel (.xlsx) File.
  *
  * @param {string} fileName The File name.
  */
 const exportRatesToExcel = async (fileName) => {
   const workbook = new ExcelJS.Workbook();
 
-  for (let index in RATE_TYPES) {
-    const rateType = RATE_TYPES[index];
+  for (const rateType of RATE_TYPES) {
     const { shippingSpeed, locale } = rateType;
 
     console.log(`Exporting Rates for ${ locale } ${ shippingSpeed }`);
 
-    const records = await fetchRatesByClientAndType(CLIENT_ID, shippingSpeed, locale);
+    const [ rows, fields ] = await fetchRatesByClientAndType(CLIENT_ID, shippingSpeed, locale);
 
-    console.log(`Found ${ records.length } Records for ${ locale } ${ shippingSpeed }`);
-    
-    createSheet(workbook, records, shippingSpeed, locale);
+    console.log(`Found ${ rows.length } Records for ${ locale } ${ shippingSpeed }`);
+
+    createSheet(workbook, rows, shippingSpeed, locale);
   }
 
   await workbook.xlsx.writeFile(fileName);
 };
 
-exportRatesToExcel(FILE_NAME).then(() => {
-  console.log(`Done. Uploaded to ${ FILE_NAME }`);
+(async function() {
+  try {
+    connection = await mysql.createConnection({ ...DB_CONFIG });
 
-  connection.destroy();
-  process.exit();
-});
+    await exportRatesToExcel(FILE_NAME);
+
+    console.log(`Done. Uploaded to ${ FILE_NAME }`);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    process.exit();
+  }
+}());
