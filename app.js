@@ -113,46 +113,10 @@ const getInternationalZones = () => {
  * Maps the Rate Item.
  *
  * @param {object} item The Rate Item.
- * @param {string} locale The Locale, Domestic or International.
+ * @param {array} zones The Domestic Zones.
  * @return {array} An Array of the fully-populated Rates and Zones.
  */
-const mapItem = (item, locale, zones) => {
-  if (locale === 'domestic') {
-    return mapDomesticItem(item, zones);
-  }
-
-  if (locale === 'international') {
-    return mapInternationalItem(item, zones);
-  }
-
-  return [];
-};
-
-/**
- * Maps the Domestic Rate Item.
- *
- * @param {object} item The Domestic Rate Item.
- * @param {array} zones The Domestic Zones.
- * @return {array} An Array of the fully-populated Domestic Rates and Zones.
- */
-const mapDomesticItem = (item, zones) => {
-  const mappedItem = [ item.startWeight, item.endWeight ];
-
-  for (const zone of zones) {
-    mappedItem.push(item[zone]);
-  }
-
-  return mappedItem;
-};
-
-/**
- * Maps the International Rate Item.
- *
- * @param {object} item The International Rate Item.
- * @param {array} zones The International Zones.
- * @return {array} An Array of the fully-populated International Rates and Zones.
- */
-const mapInternationalItem = (item, zones) => {
+const mapItem = (item, zones) => {
   const mappedItem = [ item.startWeight, item.endWeight ];
 
   for (const zone of zones) {
@@ -199,7 +163,7 @@ const createSheet = (workbook, records, shippingSpeed, locale) => {
     if (!obj.endWeight) {
       obj.endWeight = record.end_weight;
     }
-    
+
     obj[zoneKey] = record.rate;
     dataMap.set(mapKey, obj);
   }
@@ -209,7 +173,7 @@ const createSheet = (workbook, records, shippingSpeed, locale) => {
   const iterator = dataMap[Symbol.iterator]();
 
   for (const [key, value] of iterator) {
-    data.push(mapItem(value, locale, zoneKeys));
+    data.push(mapItem(value, zoneKeys));
   }
 
   sheet.addRows(data);
