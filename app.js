@@ -190,15 +190,16 @@ const createSheet = (workbook, records, shippingSpeed, locale) => {
     const mapKey = `${ record.start_weight }:${ record.end_weight }`;
     const zoneKey = `zone${ record.zone.toUpperCase() }`;
 
-    let obj = {
-      startWeight: record.start_weight,
-      endWeight: record.end_weight
-    };
+    const obj = dataMap.has(mapKey) ? dataMap.get(mapKey) : {};
 
-    if (dataMap.has(mapKey)) {
-      obj = dataMap.get(mapKey);
+    if (!obj.startWeight) {
+      obj.startWeight = record.start_weight;
     }
 
+    if (!obj.endWeight) {
+      obj.endWeight = record.end_weight;
+    }
+    
     obj[zoneKey] = record.rate;
     dataMap.set(mapKey, obj);
   }
