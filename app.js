@@ -21,8 +21,8 @@ var connection;
  * @param {string} locale The Locale, Domestic or International.
  * @return {array} An Array of Rates.
  */
-const fetchRatesByClientAndType = async (clientId, shippingSpeed, locale) => {
-  return await connection.query(
+const fetchRatesByClientAndType = (clientId, shippingSpeed, locale) => {
+  return connection.query(
     'SELECT * FROM rates WHERE client_id = ? AND shipping_speed = ? AND locale = ? ' +
     ' ORDER BY start_weight, end_weight, zone', [ clientId, shippingSpeed, locale ]
   );
